@@ -4,9 +4,9 @@ from pathlib import Path
 from exceptions import UnsupportedFormatError
 
 
-
 SUPPORTED_INPUT_FORMATS = {"jpg", "jpeg", "png", "webp"}
 SUPPORTED_OUTPUT_FORMATS = {"jpg", "jpeg", "png", "webp"}
+
 
 class ImageOptimizer:
     """Сервис для сжатия, конвертации и улучшения изображений."""
@@ -51,6 +51,36 @@ class ImageOptimizer:
 
         return normalized_output_format
 
+    @staticmethod
+    def build_output_path(
+        input_path: Path,
+        output_dir: Path,
+        output_format: str,
+    ) -> Path:
+        """Строит путь для выходного файла."""
+        return output_dir / f"{input_path.stem}_optimized.{output_format}"
+
+    @staticmethod
+    def get_pillow_save_format(output_format: str) -> str:
+        """Вовзращает формат для pillow для сохранения."""
+        if output_format == "jpg":
+            return "JPEG"
+
+        return output_format.upper()
+    
+    @staticmethod
+    def get_save_options(output_format: str, quality: int) -> dict[str, int | bool]:
+        """Подготавливает параметры оптимизации."""
+        if output_format == "jpg":
+            return {"quality": quality, "optimize": True}
+
+        if output_format == "webp":
+            return {"quality": quality, "method": 6}
+
+        if output_format == "png":
+            return {"optimize": True}
+
+        return {}
 
     def optimize(
         self,
