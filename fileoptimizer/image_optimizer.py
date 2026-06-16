@@ -115,6 +115,28 @@ class ImageOptimizer:
 
         return resized_image
 
+
+    @staticmethod
+    def apply_enhancements(
+        image: Image.Image,
+        enhance_contrast: bool = False,
+        enhance_sharpness: bool = False,
+        enhance_brightness: bool = False,
+    ) -> Image.Image:
+        """Применяет базовые визуальные улучшения изображения."""
+        enhanced_image = image
+
+        if enhance_contrast:
+            enhanced_image = ImageOps.autocontrast(enhanced_image)
+
+        if enhance_sharpness:
+            enhanced_image = ImageEnhance.Sharpness(enhanced_image).enhance(1.3)
+
+        if enhance_brightness:
+            enhanced_image = ImageEnhance.Brightness(enhanced_image).enhance(1.1)
+
+        return enhanced_image
+
     def optimize(
         self,
         input_path: Path,
