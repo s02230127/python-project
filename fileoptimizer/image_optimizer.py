@@ -2,7 +2,7 @@ from pathlib import Path
 
 from PIL import Image, ImageEnhance, ImageOps
 
-from exceptions import OptimizationError, UnsupportedFormatError
+from fileoptimizer.exceptions import OptimizationError, UnsupportedFormatError
 
 
 SUPPORTED_INPUT_FORMATS = {"jpg", "jpeg", "png", "webp"}
@@ -19,7 +19,7 @@ class ImageOptimizer:
         output_format: str,
         quality: int,
     ) -> str:
-        """Проверяет параметры и возвращает их нормализованный вид."""
+        """Проверяет параметры и возвращает нормализованный выходной формат."""
         if not input_path.exists():
             raise FileNotFoundError(f"Input file does not exist: {input_path}")
 
@@ -53,6 +53,24 @@ class ImageOptimizer:
         return normalized_output_format
 
     @staticmethod
+    def _validate_enhancement_factor(name: str, value: float) -> None:
+        """Проверяет коэффициент визуального улучшения изображения."""
+        if not 0.5 <= value <= 2.0:
+            raise ValueError(f"{name} must be between 0.5 and 2.0.")
+
+    @staticmethod
+    def _validate_resize_params(
+        max_width: int | None,
+        max_height: int | None,
+    ) -> None:
+        """Проверяет параметры изменения размера изображения."""
+        if max_width is not None and max_width <= 0:
+            raise ValueError("max_width must be positive.")
+
+        if max_height is not None and max_height <= 0:
+            raise ValueError("max_height must be positive.")
+
+    @staticmethod
     def build_output_path(
         input_path: Path,
         output_dir: Path,
@@ -63,12 +81,12 @@ class ImageOptimizer:
 
     @staticmethod
     def get_pillow_save_format(output_format: str) -> str:
-        """Вовзращает формат для pillow для сохранения."""
+        """Возвращает формат Pillow для сохранения изображения."""
         if output_format == "jpg":
             return "JPEG"
 
         return output_format.upper()
-    
+
     @staticmethod
     def get_save_options(output_format: str, quality: int) -> dict[str, int | bool]:
         """Подготавливает параметры оптимизации."""
@@ -115,25 +133,24 @@ class ImageOptimizer:
 
         return resized_image
 
-
     @staticmethod
     def apply_enhancements(
         image: Image.Image,
-        enhance_contrast: bool = False,
-        enhance_sharpness: bool = False,
-        enhance_brightness: bool = False,
+        contrast_factor: float = 1.0,
+        sharpness_factor: float = 1.0,
+        brightness_factor: float = 1.0,
     ) -> Image.Image:
-        """Применяет базовые визуальные улучшения изображения."""
+        """Применяет визуальные улучшения изображения по заданным коэффициентам."""
         enhanced_image = image
 
-        if enhance_contrast:
-            enhanced_image = ImageOps.autocontrast(enhanced_image)
+        if contrast_factor != 1.0:
+            enhanced_image = ImageEnhance.Contrast(enhanced_image).enhance(contrast_factor)
 
-        if enhance_sharpness:
-            enhanced_image = ImageEnhance.Sharpness(enhanced_image).enhance(1.3)
+        if sharpness_factor != 1.0:
+            enhanced_image = ImageEnhance.Sharpness(enhanced_image).enhance(sharpness_factor)
 
-        if enhance_brightness:
-            enhanced_image = ImageEnhance.Brightness(enhanced_image).enhance(1.1)
+        if brightness_factor != 1.0:
+            enhanced_image = ImageEnhance.Brightness(enhanced_image).enhance(brightness_factor)
 
         return enhanced_image
 
@@ -145,26 +162,28 @@ class ImageOptimizer:
         quality: int = 75,
         max_width: int | None = None,
         max_height: int | None = None,
-        enhance_contrast: bool = False,
-        enhance_sharpness: bool = False,
-        enhance_brightness: bool = False,
-    ) -> bool:
-        """Оптимизирует фотографии и сохраняет ее.
+        contrast_factor: float = 1.0,
+        sharpness_factor: float = 1.0,
+        brightness_factor: float = 1.0,
+    ) -> Path:
+        """Оптимизирует фотографию и сохраняет результат.
         
         Args:
             input_path: Путь к исходной фотографии.
-            output_dir: Путь к папке для сохраненния фотографии.
+            output_dir: Путь к папке для сохраненния результата.
             output_format: Формат сохраненной фотографии. ["webp", "jpg", "png", "jpeg"]
-            quality: качество от исходной фотографии. 1 <= quality <= 100
-            max_width: максимальная ширина.
-            max_height: максимальная высота.
-            enhance_contrast: улучшения контраста.
-            enhance_sharpness: улучшение остроты.
-            enhance_brightness: улучшение яркости.
+            quality: Качество сжатия для JPG и WebP. 1 <= quality <= 100.
+            max_width: Максимальная ширина.
+            max_height: Максимальная высота.
+            contrast_factor: Изменение контраста. 0.5 <= factor <= 2.0
+            sharpness_factor: Изменение остроты. 0.5 <= factor <= 2.0
+            brightness_factor: Изменение яркости. 0.5 <= factor <= 2.0
 
         Raises:
-            TODO: исключение при отсутсвии/проблемами с файлом.
-            TODO: исключение при ошибки во время оптимизации.
+            FileNotFoundError: Если исходный файл не найден.
+            ValueError: Если путь не является файлом или параметры некорректны.
+            UnsupportedFormatError: Если входной или выходной формат не поддерживается.
+            OptimizationError: Если произошла ошибка при обработке изображения.
         """ 
         output_format = self._validate_optimize_params(
             input_path=input_path,
@@ -172,6 +191,12 @@ class ImageOptimizer:
             output_format=output_format,
             quality=quality,
         )
+
+        self._validate_resize_params(max_width, max_height)
+        
+        self._validate_enhancement_factor("contrast_factor", contrast_factor)
+        self._validate_enhancement_factor("sharpness_factor", sharpness_factor)
+        self._validate_enhancement_factor("brightness_factor", brightness_factor)
 
         output_path = self.build_output_path(
             input_path=input_path,
@@ -182,6 +207,20 @@ class ImageOptimizer:
         try:
             with Image.open(input_path) as image:
                 processed_image = ImageOps.exif_transpose(image)
+
+                processed_image = self.resize_keep_aspect_ratio(
+                    image=processed_image,
+                    max_width=max_width,
+                    max_height=max_height,
+                )
+
+                processed_image = self.apply_enhancements(
+                    image=processed_image,
+                    contrast_factor=contrast_factor,
+                    sharpness_factor=sharpness_factor,
+                    brightness_factor=brightness_factor,
+                )
+
                 processed_image = self.prepare_image_for_format(
                     image=processed_image,
                     output_format=output_format,
@@ -201,4 +240,3 @@ class ImageOptimizer:
 
         return output_path
         
-
