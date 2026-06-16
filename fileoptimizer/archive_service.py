@@ -1,5 +1,6 @@
 """Сервис для создания архивов."""
 
+import tarfile
 import zipfile
 from pathlib import Path
 
@@ -94,6 +95,19 @@ class ArchiveService:
             for input_path in input_paths:
                 archive.write(input_path, arcname=input_path.name)
 
+    @staticmethod
+    def _create_tar_archive(
+        input_paths: list[Path],
+        output_path: Path,
+        archive_format: str,
+    ) -> None:
+        """Создаёт TAR или TAR.GZ архив из списка файлов."""
+        mode = "w:gz" if archive_format == "tar.gz" else "w"
+
+        with tarfile.open(output_path, mode=mode) as archive:
+            for input_path in input_paths:
+                archive.add(input_path, arcname=input_path.name)
+
     def create_archive(
         self,
         input_paths: list[Path],
@@ -107,7 +121,7 @@ class ArchiveService:
             input_paths: Список файлов для архивации.
             output_dir: Папка для сохранения архива.
             archive_name: Имя создаваемого архива.
-            archive_format: Формат архива. В этом коммите поддерживается zip.
+            archive_format: Формат архива: zip, tar или tar.gz.
 
         Returns:
             Информация о созданном архиве.
@@ -131,10 +145,17 @@ class ArchiveService:
         original_size = self._get_total_size(input_paths)
 
         try:
-            self._create_zip_archive(
-                input_paths=input_paths,
-                output_path=output_path,
-            )
+            if archive_format == "zip":
+                self._create_zip_archive(
+                    input_paths=input_paths,
+                    output_path=output_path,
+                )
+            else:
+                self._create_tar_archive(
+                    input_paths=input_paths,
+                    output_path=output_path,
+                    archive_format=archive_format,
+                )
         except OSError as error:
             raise ArchiveCreationError("Problems with archive creation.") from error
 
@@ -153,4 +174,3 @@ class ArchiveService:
             archive_format=archive_format,
             files_count=len(input_paths),
         )
-    
