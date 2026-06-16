@@ -8,3 +8,6 @@ class UnsupportedFormatError(FileOptimizerError):
 
 class OptimizationError(FileOptimizerError):
     """Raised when file optimization fails."""
+
+class StorageError(FileOptimizerError):
+    """Raised when an error occurs while working with temporary file storage."""
