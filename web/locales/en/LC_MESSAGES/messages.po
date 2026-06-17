@@ -1,0 +1,118 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: FileOptimizer\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-06-17 12:00+0000\n"
+"PO-Revision-Date: 2026-06-17 12:00+0000\n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Language: en\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Optimize Image"
+msgstr "Optimize Image"
+
+msgid "Create Archive"
+msgstr "Create Archive"
+
+msgid "Choose a tool"
+msgstr "Choose a tool"
+
+msgid "Image Optimization"
+msgstr "Image Optimization"
+
+msgid "Compress, convert, and enhance photos"
+msgstr "Compress, convert, and enhance photos"
+
+msgid "Archive"
+msgstr "Archive"
+
+msgid "Pack files into ZIP, TAR, TAR.GZ"
+msgstr "Pack files into ZIP, TAR, TAR.GZ"
+
+msgid "Go"
+msgstr "Go"
+
+msgid "Upload image"
+msgstr "Upload image"
+
+msgid "Output format"
+msgstr "Output format"
+
+msgid "Quality (1-100)"
+msgstr "Quality (1-100)"
+
+msgid "Max width (optional)"
+msgstr "Max width (optional)"
+
+msgid "Max height (optional)"
+msgstr "Max height (optional)"
+
+msgid "Enhancements"
+msgstr "Enhancements"
+
+msgid "Optimize"
+msgstr "Optimize"
+
+msgid "Select files"
+msgstr "Select files"
+
+msgid "Archive format"
+msgstr "Archive format"
+
+msgid "Archive name (without extension)"
+msgstr "Archive name (without extension)"
+
+msgid "Create"
+msgstr "Create"
+
+msgid "Result"
+msgstr "Result"
+
+msgid "Your file has been processed."
+msgstr "Your file has been processed."
+
+msgid "File name"
+msgstr "File name"
+
+msgid "Size"
+msgstr "Size"
+
+msgid "Download"
+msgstr "Download"
+
+msgid "Error"
+msgstr "Error"
+
+msgid "Go back home"
+msgstr "Go back home"
+
+msgid "Original size"
+msgstr "Original size"
+
+msgid "Processed size"
+msgstr "Processed size"
+
+msgid "Saved"
+msgstr "Saved"
+
+msgid "Dimensions"
+msgstr "Dimensions"
+
+msgid "Output format"
+msgstr "Output format"
+
+msgid "Archive size"
+msgstr "Archive size"
+
+msgid "Files count"
+msgstr "Files count"
+
+msgid "Archive format"
+msgstr "Archive format"
+
+msgid "Documentation"
+msgstr "Documentation"

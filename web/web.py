@@ -1,19 +1,27 @@
-"""Веб-интерфейс для FileOptimizer на FastAPI с поддержкой Babel."""
+"""Веб-интерфейс для FileOptimizer с ручным управлением шаблонами."""
 
 import json
-import shutil
 from pathlib import Path
 from typing import List, Optional
 
 from fastapi import FastAPI, Request, UploadFile, File, Form, HTTPException, BackgroundTasks
 from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from babel.support import Translations
-from jinja2.ext import i18n
 
-from config import TEMPLATES_DIR, STATIC_DIR, JOBS_BASE_DIR, MAX_UPLOAD_SIZE, LOCALES_DIR
+from jinja2 import Environment, FileSystemLoader, select_autoescape
+from babel.support import Translations
+
+from .config import (
+    TEMPLATES_DIR,
+    STATIC_DIR,
+    LOCALES_DIR,
+    DOCS_DIR,
+    JOBS_BASE_DIR,
+    MAX_UPLOAD_SIZE,
+    LANGUAGES,
+    DEFAULT_LANGUAGE,
+)
 from fileoptimizer.storage import StorageService
 from fileoptimizer.image_optimizer import ImageOptimizer
 from fileoptimizer.archive_service import ArchiveService
@@ -24,78 +32,94 @@ from fileoptimizer.exceptions import (
     StorageError,
     ArchiveCreationError,
 )
-from fileoptimizer.models import ImageOptimizeResult, ArchiveResult
 
 app = FastAPI(title="FileOptimizer", version="0.1.0")
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-templates = Jinja2Templates(directory=TEMPLATES_DIR)
-templates.env.add_extension(i18n)
+if DOCS_DIR.exists():
+    app.mount("/documentation", StaticFiles(directory=DOCS_DIR, html=True), name="docs")
+else:
+    print("Warning: Documentation not built. Run 'sphinx-build -b html docs/source docs/_build/html'")
 
+env = Environment(
+    loader=FileSystemLoader(TEMPLATES_DIR),
+    autoescape=select_autoescape(['html', 'xml']),
+    cache_size=0,
+)
 
-
+# ---------- Сервисы ----------
 storage_service = StorageService(base_dir=JOBS_BASE_DIR)
 image_optimizer = ImageOptimizer()
 archive_service = ArchiveService()
 
+# ---------- Вспомогательные функции для переводов ----------
+def load_translations(lang: str) -> Translations:
+    """Загружает переводы для языка через Babel."""
+    try:
+        return Translations.load(LOCALES_DIR, [lang])
+    except Exception:
+        return Translations()
 
+def gettext(request: Request, key: str) -> str:
+    """Возвращает перевод строки для текущего языка."""
+    translations = getattr(request.state, "translations", None)
+    if translations:
+        return translations.gettext(key)
+    return key
+
+def render_template(request: Request, template_name: str, context: dict = None) -> HTMLResponse:
+    """Рендерит шаблон с добавлением функции перевода и объекта request."""
+    if context is None:
+        context = {}
+    context.setdefault("request", request)
+    context["_"] = lambda key: gettext(request, key)
+    template = env.get_template(template_name)
+    return HTMLResponse(content=template.render(**context))
+
+# ---------- Middleware для локализации ----------
 @app.middleware("http")
 async def set_locale(request: Request, call_next):
-    """Устанавливает язык из куки или параметра запроса для текущего запроса."""
-    lang = request.query_params.get("lang")
-    if lang and lang in ("ru", "en"):
-        response = await call_next(request)
-        response.set_cookie("lang", lang)
-        return response
+    """Загружает переводы для языка из куки/параметра и сохраняет в request.state."""
+    lang = request.cookies.get("lang")
+    if not lang:
+        lang = request.query_params.get("lang", DEFAULT_LANGUAGE)
+    if lang not in LANGUAGES:
+        lang = DEFAULT_LANGUAGE
 
-    lang = request.cookies.get("lang", "ru")
-    translations = Translations.load(LOCALES_DIR, [lang])
-    templates.env.install_gettext_translations(translations, newstyle=True)
     request.state.lang = lang
+    request.state.translations = load_translations(lang)
+
     response = await call_next(request)
     return response
 
-
+# ---------- Обработчики ошибок ----------
 @app.exception_handler(FileOptimizerError)
 async def file_optimizer_exception_handler(request: Request, exc: FileOptimizerError):
-    """Обработка пользовательских ошибок FileOptimizer."""
-    return templates.TemplateResponse(
-        "error.html",
-        {"request": request, "error": str(exc)},
-        status_code=400,
-    )
-
+    return render_template(request, "error.html", {"error": str(exc)}, status_code=400)
 
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
-    """Обработка HTTP-ошибок (404 и т.п.)."""
-    return templates.TemplateResponse(
-        "error.html",
-        {"request": request, "error": exc.detail},
-        status_code=exc.status_code,
-    )
+    return render_template(request, "error.html", {"error": exc.detail}, status_code=exc.status_code)
 
+# ---------- Переключение языка ----------
+@app.get("/set_lang")
+async def set_lang(lang: str, redirect: str = "/"):
+    if lang not in LANGUAGES:
+        lang = DEFAULT_LANGUAGE
+    response = RedirectResponse(url=redirect, status_code=303)
+    response.set_cookie("lang", lang, max_age=3600*24*30)
+    return response
 
-def cleanup_job(job_dir: Path) -> None:
-    """Удаляет папку задачи (используется в фоновых задачах)."""
-    try:
-        storage_service.cleanup_job_dir(job_dir)
-    except Exception as e:
-        print(f"Cleanup error for {job_dir}: {e}")
-
-
+# ---------- Главная страница ----------
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    """Главная страница с выбором инструмента."""
-    return templates.TemplateResponse("index.html", {"request": request})
+    return render_template(request, "index.html")
 
-
+# ---------- Оптимизация изображений ----------
 @app.get("/image", response_class=HTMLResponse)
 async def image_form(request: Request):
-    """Форма для оптимизации изображений."""
-    return templates.TemplateResponse("image_form.html", {"request": request})
-
+    return render_template(request, "image_form.html")
 
 @app.post("/image", response_class=HTMLResponse)
 async def process_image(
@@ -109,10 +133,9 @@ async def process_image(
     sharpness: float = Form(1.0),
     brightness: float = Form(1.0),
 ):
-    """Обработка загруженного изображения."""
     try:
-        file_content = await file.read()
-        if len(file_content) > MAX_UPLOAD_SIZE:
+        content = await file.read()
+        if len(content) > MAX_UPLOAD_SIZE:
             raise HTTPException(status_code=413, detail="File too large")
 
         job_dir = storage_service.create_job_dir()
@@ -120,9 +143,9 @@ async def process_image(
 
         temp_path = input_dir / file.filename
         with open(temp_path, "wb") as f:
-            f.write(file_content)
+            f.write(content)
 
-        result: ImageOptimizeResult = image_optimizer.optimize(
+        result = image_optimizer.optimize(
             input_path=temp_path,
             output_dir=storage_service.get_output_dir(job_dir),
             output_format=output_format,
@@ -134,25 +157,31 @@ async def process_image(
             brightness_factor=brightness,
         )
 
+        metadata = {
+            "original_size": result.size_info.original_size,
+            "processed_size": result.size_info.processed_size,
+            "saved_percent": result.size_info.saved_percent,
+            "width": result.width,
+            "height": result.height,
+            "output_format": result.output_format,
+        }
+        meta_path = job_dir / "output" / "meta.json"
+        with open(meta_path, "w") as f:
+            json.dump(metadata, f)
+
         return RedirectResponse(
             url=f"/result/{job_dir.name}?type=image",
-            status_code=303,
+            status_code=303
         )
     except (UnsupportedFormatError, OptimizationError, ValueError) as e:
-        return templates.TemplateResponse(
-            "image_form.html",
-            {"request": request, "error": str(e)},
-            status_code=400,
-        )
+        return render_template(request, "image_form.html", {"error": str(e)}, status_code=400)
     except StorageError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
+# ---------- Архиватор ----------
 @app.get("/archive", response_class=HTMLResponse)
 async def archive_form(request: Request):
-    """Форма для создания архива."""
-    return templates.TemplateResponse("archive_form.html", {"request": request})
-
+    return render_template(request, "archive_form.html")
 
 @app.post("/archive", response_class=HTMLResponse)
 async def process_archive(
@@ -161,7 +190,6 @@ async def process_archive(
     archive_format: str = Form("zip"),
     archive_name: str = Form("archive"),
 ):
-    """Обработка загрузки нескольких файлов и создание архива."""
     try:
         if not files or len(files) == 0:
             raise ValueError("No files uploaded")
@@ -175,10 +203,7 @@ async def process_archive(
                 continue
             content = await uploaded_file.read()
             if len(content) > MAX_UPLOAD_SIZE:
-                raise HTTPException(
-                    status_code=413,
-                    detail=f"File {uploaded_file.filename} too large"
-                )
+                raise HTTPException(status_code=413, detail=f"File {uploaded_file.filename} too large")
             file_path = input_dir / uploaded_file.filename
             with open(file_path, "wb") as f:
                 f.write(content)
@@ -187,52 +212,62 @@ async def process_archive(
         if not input_paths:
             raise ValueError("No valid files to archive")
 
-        result: ArchiveResult = archive_service.create_archive(
+        result = archive_service.create_archive(
             input_paths=input_paths,
             output_dir=storage_service.get_output_dir(job_dir),
             archive_name=archive_name,
             archive_format=archive_format,
         )
 
+        metadata = {
+            "original_size": result.size_info.original_size,
+            "processed_size": result.size_info.processed_size,
+            "saved_percent": result.size_info.saved_percent,
+            "files_count": result.files_count,
+            "archive_format": result.archive_format,
+        }
+        meta_path = job_dir / "output" / "meta.json"
+        with open(meta_path, "w") as f:
+            json.dump(metadata, f)
+
         return RedirectResponse(
             url=f"/result/{job_dir.name}?type=archive",
-            status_code=303,
+            status_code=303
         )
     except (UnsupportedFormatError, ArchiveCreationError, ValueError) as e:
-        return templates.TemplateResponse(
-            "archive_form.html",
-            {"request": request, "error": str(e)},
-            status_code=400,
-        )
+        return render_template(request, "archive_form.html", {"error": str(e)}, status_code=400)
     except StorageError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
+# ---------- Страница результата ----------
 @app.get("/result/{job_id}", response_class=HTMLResponse)
 async def show_result(request: Request, job_id: str, type: str):
-    """Страница результата обработки."""
     job_dir = JOBS_BASE_DIR / job_id
     if not job_dir.exists():
         raise HTTPException(status_code=404, detail="Job not found")
 
     output_dir = storage_service.get_output_dir(job_dir)
-    output_files = list(output_dir.glob("*"))
-    if not output_files:
+    result_files = [f for f in output_dir.glob("*") if f.name != "meta.json"]
+    if not result_files:
         raise HTTPException(status_code=404, detail="Result file not found")
+    result_file = result_files[0]
 
-    result_file = output_files[0]
-    file_size = result_file.stat().st_size
+    meta_path = output_dir / "meta.json"
+    metadata = {}
+    if meta_path.exists():
+        with open(meta_path) as f:
+            metadata = json.load(f)
 
     context = {
-        "request": request,
         "job_id": job_id,
         "result_file": result_file.name,
-        "file_size": file_size,
+        "file_size": result_file.stat().st_size,
         "result_type": type,
+        "metadata": metadata,
     }
-    return templates.TemplateResponse("result.html", context)
+    return render_template(request, "result.html", context)
 
-
+# ---------- Скачивание и очистка ----------
 @app.get("/download/{job_id}/{filename}")
 async def download_result(
     request: Request,
@@ -240,7 +275,6 @@ async def download_result(
     filename: str,
     background_tasks: BackgroundTasks,
 ):
-    """Скачивание обработанного файла и удаление job-директории."""
     job_dir = JOBS_BASE_DIR / job_id
     if not job_dir.exists():
         raise HTTPException(status_code=404, detail="Job not found")
@@ -249,20 +283,24 @@ async def download_result(
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
 
-    background_tasks.add_task(cleanup_job, job_dir)
+    def cleanup():
+        try:
+            storage_service.cleanup_job_dir(job_dir)
+        except Exception as e:
+            print(f"Cleanup error: {e}")
+
+    background_tasks.add_task(cleanup)
 
     return FileResponse(
         path=file_path,
         filename=filename,
-        media_type="application/octet-stream",
+        media_type="application/octet-stream"
     )
 
-
+# ---------- Точка входа ----------
 def main():
-    """Запуск веб-сервера через uvicorn."""
     import uvicorn
-    uvicorn.run("web:app", host="0.0.0.0", port=8000, reload=True)
-
+    uvicorn.run("web.web:app", host="0.0.0.0", port=8000, reload=True)
 
 if __name__ == "__main__":
     main()
