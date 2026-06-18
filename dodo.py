@@ -53,14 +53,6 @@ def task_docs():
     }
 
 
-def copy_docs_to_static():
-    """Copy built documentation to web static directory."""
-    if WEB_DOCS_DIR.exists():
-        shutil.rmtree(WEB_DOCS_DIR)
-
-    shutil.copytree(DOCS_BUILD, WEB_DOCS_DIR)
-
-
 def task_translate():
     """Extract messages and update .po files."""
     pot_file = LOCALES_DIR / 'messages.pot'

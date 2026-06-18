@@ -146,7 +146,6 @@ async def image_form(request: Request):
 
 
 @app.post("/image")
-
 async def process_image(
     request: Request,
     file: UploadFile = File(...),

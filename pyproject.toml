@@ -22,7 +22,6 @@ dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
     "ruff>=0.1.0",
-    "pydocstyle>=6.3.0",
     "sphinx>=7.0",
     "sphinx-autodoc-typehints>=1.24",
     "doit>=0.36.0",
